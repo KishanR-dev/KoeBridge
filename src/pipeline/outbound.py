@@ -123,7 +123,13 @@ class OutboundPipeline:
 
         # 1. Transcribe English
         t0 = time.perf_counter()
-        stt_res = self.stt.transcribe(audio_data, language="en", task="transcribe")
+        stt_res = self.stt.transcribe(
+            audio_data,
+            language="en",
+            task="transcribe",
+            initial_prompt="English business meeting conversation: Greetings, screen sharing, questions, discussion.",
+            vad_filter=False,
+        )
         if stt_res.get("is_mock"):
             if self.on_status:
                 self.on_status(

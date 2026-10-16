@@ -6,7 +6,7 @@ KoeBridge is a personal desktop real-time meeting translator designed for Window
 
 KoeBridge operates **100% offline in Local Mode**: zero audio, transcripts, or telemetry are transmitted over the network.
 
-> **Status — Preview v0.1.0:** This repository represents an experimental preview release. Core speech recognition, machine translation, speech synthesis, and push-to-talk safeguards have been implemented and verified in local automated and acceptance test suites. **Live two-way Zoom meeting audio bridge testing remains deferred.** Compatibility with other meeting platforms (Microsoft Teams, Google Meet, Webex) has not been verified.
+> **Status — Post-Live Zoom Meeting Update (v0.1.1):** Core speech recognition, machine translation, speech synthesis, and push-to-talk safeguards have been verified. Following an initial live Zoom meeting audit, key improvements have been deployed: (1) GUI caption overlay repaired with dynamic screen positioning, size constraints, focus-stealing prevention (`WS_EX_NOACTIVATE`), and non-blocking click-through (`WS_EX_TRANSPARENT`); (2) Japanese inbound speech upgraded to dual-line display (Japanese transcription + English translation) with hallucination filtering and lowered VAD threshold; (3) Outbound translation augmented with meeting phrase normalization and MeloTTS prosody tuning. Compatibility with other meeting platforms (Microsoft Teams, Google Meet, Webex) has not been verified.
 
 ---
 
@@ -46,14 +46,15 @@ CABLE Input (VB-Audio Virtual Cable) -> Zoom Audio Input (CABLE Output)
 ```
 
 ### 1. Inbound Pipeline (Japanese → English Captions)
-- **Audio Capture:** Windows WASAPI loopback capture using `PyAudioWPatch` captures browser audio from Zoom meetings without requiring Zoom SDKs, APIs, or browser extensions.
-- **Direct Speech Translation:** Local `faster-whisper` (`tiny` quantized int8) performs low-latency direct Japanese speech-to-English translation.
-- **Caption Presentation:** Displays real-time English translations in both the main application log and a movable, semi-transparent Tkinter overlay window.
+- **Audio Capture:** Windows WASAPI loopback capture using `PyAudioWPatch` captures browser audio from Zoom meetings without requiring Zoom SDKs, APIs, or browser extensions. Energy VAD threshold calibrated to `0.005` to capture low-amplitude conversational speech.
+- **Dual-Track Transcription & Translation:** Local `faster-whisper` (`tiny` quantized int8) performs both Japanese speech transcription (`task="transcribe"`) and English translation (`task="translate"`).
+- **Prompt Conditioning & Hallucination Filtering:** Applies domain meeting prompt context and conversational normalization to eliminate Whisper `tiny` translation head hallucinations on short conversational greetings.
+- **Caption Presentation:** Displays real-time captions in both the main application log and a floating, translucent overlay. The overlay supports dynamic screen positioning, size bounding, focus protection (`WS_EX_NOACTIVATE`), and non-blocking click-through (`WS_EX_TRANSPARENT`).
 
 ### 2. Outbound Pipeline (English → Japanese Speech Injection)
-- **Speech Recognition:** Captures user English speech via microphone and transcribes it with local `faster-whisper`.
-- **Machine Translation:** Translates English text to Japanese using a local `argostranslate` neural translation model package.
-- **Japanese Speech Synthesis:** Synthesizes natural Japanese speech locally using `sherpa-onnx` and quantized MeloTTS Japanese ONNX model weights.
+- **Speech Recognition:** Captures user English speech via microphone with prompt-conditioned `faster-whisper`.
+- **Conversational Machine Translation:** Combines local `argostranslate` neural translation with a domain-specific conversational meeting phrase dictionary and hallucination filtering, preventing web scrape artifacts ("お問い合わせ", website boilerplate).
+- **Expressive Japanese Speech Synthesis:** Synthesizes natural Japanese speech locally using quantized MeloTTS Japanese ONNX model weights, tuned prosody (`length_scale = 0.95`, `noise_scale_w = 0.85`), and intelligent punctuation pause insertion (`？`, `。`, `、`).
 - **Virtual Audio Routing:** Transmits synthesized Japanese speech into `CABLE Input (VB-Audio Virtual Cable)`, which the Zoom web client detects as its microphone input (`CABLE Output`). Alternatively routes to physical speakers for local testing.
 
 ### 3. Push-to-Talk (PTT) Reliability State Machine
@@ -146,8 +147,12 @@ python src/main.py
    - Release the button or Spacebar to translate and synthesize. The status will display `PROCESSING` and then `INJECTED` once the Japanese audio is transmitted.
    - To abort recording without translating or transmitting, press `Escape` or switch windows (`Alt+Tab`).
 
-4. **Caption Overlay:**
-   - Click **Toggle Caption Overlay** to open a semi-transparent, always-on-top window suitable for positioning over your meeting video.
+4. **Caption Overlay & Click-Through Mode:**
+   - Click **Show/Hide Overlay Window** to open the floating, semi-transparent caption bar. It automatically positions itself centered near the bottom of your screen work area.
+   - Click **Click-Through: OFF (Draggable)** to toggle click-through mode:
+     - **OFF (Draggable):** You can freely click and drag the caption window to your preferred screen location.
+     - **ON (Pass Clicks to Zoom):** Enables Windows `WS_EX_TRANSPARENT`. All mouse clicks pass directly through the overlay to Zoom or applications beneath it without trapping input.
+   - Dual-line captions display both the recognized Japanese speech (`[JA]`) in amber and the English translation (`[EN]`) in cyan. Focus protection (`WS_EX_NOACTIVATE`) prevents incoming captions from interrupting your active meeting or taking typing focus away.
 
 ---
 

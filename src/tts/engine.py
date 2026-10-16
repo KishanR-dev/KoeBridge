@@ -215,6 +215,34 @@ class LocalJapaneseTtsEngine:
                 i += 1
         return phones, tones
 
+    def _preprocess_ja_prosody(self, text: str) -> str:
+        """Add pause markers and rising intonation punctuation for natural Japanese prosody."""
+        t = text.strip()
+        if not t:
+            return t
+
+        # Ensure polite question ending has rising intonation marker '？'
+        if t.endswith(("か", "でしょうか", "ますか")):
+            t += "？"
+        elif not t.endswith(("。", "？", "！", ".", "?", "!")):
+            t += "。"
+
+        # Add comma pauses after common introductory discourse markers if not already punctuated
+        markers = [
+            ("はい", "はい、"),
+            ("いいえ", "いいえ、"),
+            ("それでは", "それでは、"),
+            ("では", "では、"),
+            ("すみませんが", "すみませんが、"),
+            ("恐れ入りますが", "恐れ入りますが、"),
+            ("なるほど", "なるほど、"),
+        ]
+        for m, rep in markers:
+            if t.startswith(m) and not t.startswith(rep):
+                t = rep + t[len(m) :]
+                break
+        return t
+
     def synthesize(self, text: str) -> Dict[str, Any]:
         """
         Synthesize Japanese text into float32 audio samples.
@@ -227,6 +255,9 @@ class LocalJapaneseTtsEngine:
                 "latency_ms": 0.0,
                 "is_mock": False,
             }
+
+        # Apply prosody and punctuation preprocessing
+        text = self._preprocess_ja_prosody(text)
 
         start_time = time.perf_counter()
 
@@ -246,8 +277,8 @@ class LocalJapaneseTtsEngine:
                     tones_arr = np.array([new_tones], dtype=np.int64)
                     sid = np.array([0], dtype=np.int64)
                     noise_scale = np.array([0.6], dtype=np.float32)
-                    length_scale = np.array([1.0], dtype=np.float32)
-                    noise_scale_w = np.array([0.8], dtype=np.float32)
+                    length_scale = np.array([0.95], dtype=np.float32)
+                    noise_scale_w = np.array([0.85], dtype=np.float32)
 
                     outputs = self._melo_sess.run(
                         ["y"],

@@ -63,6 +63,9 @@ class SttEngine:
         audio_data: np.ndarray,
         language: Optional[str] = None,
         task: str = "transcribe",  # 'transcribe' or 'translate'
+        initial_prompt: Optional[str] = None,
+        vad_filter: bool = False,
+        beam_size: int = 1,
     ) -> Dict[str, Any]:
         """
         Transcribe or directly translate speech audio.
@@ -85,14 +88,18 @@ class SttEngine:
                 }
 
         start_time = time.perf_counter()
-        segments, info = self.model.transcribe(
-            audio_data,
-            language=language,
-            task=task,
-            beam_size=1,  # Greedy for minimal CPU latency
-            vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500),
-        )
+        kwargs = {
+            "language": language,
+            "task": task,
+            "beam_size": beam_size,
+            "vad_filter": vad_filter,
+        }
+        if vad_filter:
+            kwargs["vad_parameters"] = dict(min_silence_duration_ms=500)
+        if initial_prompt:
+            kwargs["initial_prompt"] = initial_prompt
+
+        segments, info = self.model.transcribe(audio_data, **kwargs)
         text = " ".join([seg.text.strip() for seg in segments]).strip()
         elapsed_ms = (time.perf_counter() - start_time) * 1000.0
 
