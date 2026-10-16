@@ -55,7 +55,7 @@ coverage.xml
 .DS_Store
 Thumbs.db
 
-# Claude Code local settings & job scratchpads
+# Local agent settings & job scratchpads
 .claude/
 
 # Downloaded Models & Weights (never commit heavy model assets)
