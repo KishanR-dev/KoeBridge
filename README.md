@@ -6,7 +6,7 @@ KoeBridge is a personal desktop real-time meeting translator designed for Window
 
 KoeBridge operates **100% offline in Local Mode**: zero audio, transcripts, or telemetry are transmitted over the network.
 
-> **Status — Post-Live Zoom Meeting Update (v0.1.1):** Core speech recognition, machine translation, speech synthesis, and push-to-talk safeguards have been verified. Following an initial live Zoom meeting audit, key improvements have been deployed: (1) GUI caption overlay repaired with dynamic screen positioning, size constraints, focus-stealing prevention (`WS_EX_NOACTIVATE`), and non-blocking click-through (`WS_EX_TRANSPARENT`); (2) Japanese inbound speech upgraded to dual-line display (Japanese transcription + English translation) with hallucination filtering and lowered VAD threshold; (3) Outbound translation augmented with meeting phrase normalization and MeloTTS prosody tuning. Compatibility with other meeting platforms (Microsoft Teams, Google Meet, Webex) has not been verified.
+> **Status — Post-Audit / Live Zoom Acceptance Pending (v0.1.1):** Core speech recognition, machine translation, speech synthesis, and push-to-talk state machine safeguards have been verified in local automated unit and acceptance test suites. **Initial real-world live Zoom meeting testing exposed significant defects** in overlay placement/click-blocking, speech transcription/VAD truncation, and translation hallucinations. While technical repairs and hallucination safety filters have now been implemented in the codebase and verified through automated test suites, **formal post-repair live Zoom meeting acceptance has not yet been conducted and remains pending.** Compatibility with other meeting platforms (Microsoft Teams, Google Meet, Webex) has not been verified.
 
 ---
 
@@ -54,7 +54,7 @@ CABLE Input (VB-Audio Virtual Cable) -> Zoom Audio Input (CABLE Output)
 ### 2. Outbound Pipeline (English → Japanese Speech Injection)
 - **Speech Recognition:** Captures user English speech via microphone with prompt-conditioned `faster-whisper`.
 - **Conversational Machine Translation:** Combines local `argostranslate` neural translation with a domain-specific conversational meeting phrase dictionary and hallucination filtering, preventing web scrape artifacts ("お問い合わせ", website boilerplate).
-- **Expressive Japanese Speech Synthesis:** Synthesizes natural Japanese speech locally using quantized MeloTTS Japanese ONNX model weights, tuned prosody (`length_scale = 0.95`, `noise_scale_w = 0.85`), and intelligent punctuation pause insertion (`？`, `。`, `、`).
+- **Japanese Speech Synthesis:** Synthesizes Japanese speech locally using quantized MeloTTS Japanese ONNX model weights with punctuation-based pause insertion (`、`, `？`) and duration variance tuning (`length_scale = 0.95`, `noise_scale_w = 0.85`). Speech synthesis provides deterministic timing and tone adjustments; expressive emotional prosody is not claimed without empirical perceptual evaluation.
 - **Virtual Audio Routing:** Transmits synthesized Japanese speech into `CABLE Input (VB-Audio Virtual Cable)`, which the Zoom web client detects as its microphone input (`CABLE Output`). Alternatively routes to physical speakers for local testing.
 
 ### 3. Push-to-Talk (PTT) Reliability State Machine

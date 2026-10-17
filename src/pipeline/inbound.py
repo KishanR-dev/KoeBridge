@@ -94,8 +94,9 @@ class InboundPipeline:
 
     def _normalize_inbound_translation(self, ja_text: str, en_text: str) -> str:
         """
-        Normalize and repair known Whisper tiny translation hallucinations on conversational
-        Japanese meeting phrases (e.g. translating 'こんにちは' as 'This is the end.').
+        Normalize and filter known Whisper tiny cross-lingual translation artifacts.
+        Preserves model translations unless an exact, narrowly defined hallucination pattern is matched.
+        Never replaces a translation merely because it contains words like 'end', 'bye', or 'this is'.
         """
         ja_clean = (
             ja_text.strip()
@@ -103,67 +104,64 @@ class InboundPipeline:
             .replace("、", "")
             .replace("？", "")
             .replace("！", "")
+            .strip()
         )
-        en_lower = en_text.lower()
+        en_clean = en_text.strip()
+        en_lower = en_clean.lower().rstrip(".!?")
 
-        # Check common greetings
+        # Narrowly defined greeting pattern:
+        # ONLY when the Japanese transcription is strictly an isolated greeting
+        # AND the English translation is empty or matches known Whisper tiny unconditioned hallucination artifacts
         if ja_clean in ("こんにちは", "こんにちわ", "どうもこんにちは"):
-            if (
-                not en_text
-                or "this is" in en_lower
-                or "end" in en_lower
-                or "bye" in en_lower
+            if en_lower in (
+                "this is the end",
+                "thank you for watching",
+                "please subscribe",
+                "subtitles by",
+                "this is",
+                "",
             ):
                 return "Hello."
 
-        if any(w in ja_clean for w in ("ありがとう", "ありがとうございます", "有難う")):
-            if not en_text or "thank" not in en_lower:
+        if ja_clean in (
+            "ありがとう",
+            "ありがとうございます",
+            "どうもありがとうございます",
+        ):
+            if en_lower in (
+                "this is the end",
+                "thank you for watching",
+                "please subscribe",
+                "subtitles by",
+                "",
+            ):
                 return "Thank you."
 
-        if (
-            "はじめまして" in ja_clean
-            or "よろしくお願" in ja_clean
-            or "よろしく" in ja_clean
-        ):
-            if not en_text or any(
-                h in en_lower for h in ["mask", "color", "talk to you a little"]
-            ):
-                return "Nice to meet you. Looking forward to working with you."
-
-        if "見えますか" in ja_clean or "画面" in ja_clean:
-            if not en_text or "like it" in en_lower or "talk" in en_lower:
-                return "Can you see my screen?"
-
-        if "聞こえますか" in ja_clean or "声が" in ja_clean:
-            if not en_text or "think" in en_lower:
-                return "Can you hear me?"
-
-        if "わかりました" in ja_clean or "承知" in ja_clean or "了解" in ja_clean:
-            if not en_text or "thank" in en_lower:
-                return "Understood."
-
-        if "質問がありま" in ja_clean:
-            return "I have a question."
-
-        if "失礼します" in ja_clean or "失礼いたします" in ja_clean:
-            return "Excuse me."
-
-        if "さようなら" in ja_clean:
-            return "Goodbye."
-
-        # Discard generic hallucination artifacts
-        hallucination_phrases = [
+        # Known YouTube / subtitle generation hallucinations that have no correspondence to spoken text:
+        # Must match the full artifact or exact known signature, NOT arbitrary sentences containing "end" or "bye"
+        hallucination_exact = {
             "this is the end",
             "thank you for watching",
+            "thank you for watching!",
             "please subscribe",
+            "please subscribe!",
             "subtitles by",
             "transcription by",
-        ]
-        if any(h in en_lower for h in hallucination_phrases):
+        }
+        if en_lower in hallucination_exact or any(
+            en_lower.startswith(prefix)
+            for prefix in [
+                "subtitles by ",
+                "transcription by ",
+                "thank you for watching this video",
+            ]
+        ):
+            # Do not invent a fake translation; preserve the Japanese transcription so user sees real content
             if ja_text:
                 return f"[JA: {ja_text}]"
             return ""
 
+        # Preserve the model's actual translation
         return en_text
 
     def _process_utterance(self, buffer_chunks: list) -> None:

@@ -161,6 +161,18 @@ class OutboundPipeline:
                 )
             return
 
+        if mt_res.get("is_uncertain"):
+            if self.on_status:
+                self.on_status(
+                    "FAILED",
+                    {
+                        "message": f"Outbound MT Rejected: {mt_res.get('error', 'Translation uncertain.')}",
+                        "en_text": en_text,
+                        "raw_translation": mt_res.get("raw_translation", ""),
+                    },
+                )
+            return
+
         ja_text = mt_res.get("translated_text", "").strip()
         if not ja_text:
             if self.on_status:

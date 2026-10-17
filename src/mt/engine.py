@@ -139,42 +139,52 @@ class MachineTranslationEngine:
             return CONVERSATIONAL_MEETING_PHRASES[norm_clean]
         return None
 
-    def _filter_argos_hallucinations(self, orig_text: str, ja_text: str) -> str:
-        """Filter known Argos Translate OpenNMT web scrape artifacts."""
-        orig_lower = orig_text.lower()
-        # Argos frequently outputs 'お問い合わせ' (Contact us) for short phrases
-        if (
+    def _filter_argos_hallucinations(
+        self, orig_text: str, ja_text: str
+    ) -> Dict[str, Any]:
+        """
+        Check for known Argos Translate OpenNMT web crawl artifacts (e.g. website footers).
+        Returns a dict with 'is_uncertain', 'translated_text', and optional 'error'.
+        Never invents fallback translations (e.g. 'よろしくお願いします。' or '申し訳ありません。').
+        """
+        orig_lower = orig_text.lower().strip()
+        norm_clean = orig_lower.rstrip(".!?,")
+
+        # Check for web crawl footer artifacts
+        has_contact_artifact = (
             "お問い合わせ" in ja_text
             and "contact" not in orig_lower
             and "inquiry" not in orig_lower
-        ):
-            norm_clean = orig_lower.strip().rstrip(".!?,")
-            # If known phrase exists, use it
+        )
+        has_site_disclaimer = (
+            "このコンテンツはただ今" in ja_text or "アメリカ英語 のみ" in ja_text
+        )
+        has_legal_boilerplate = any(
+            bp in ja_text
+            for bp in [
+                "プライバシーポリシー",
+                "利用規約",
+                "クッキーの設定",
+                "すべての権利を保有",
+            ]
+        )
+
+        if has_contact_artifact or has_site_disclaimer or has_legal_boilerplate:
+            # Check if the ENTIRE phrase is an exact known meeting phrase
             if norm_clean in CONVERSATIONAL_MEETING_PHRASES:
-                return CONVERSATIONAL_MEETING_PHRASES[norm_clean]
-            # Try splitting into words
-            words = norm_clean.split()
-            if words and words[0] in CONVERSATIONAL_MEETING_PHRASES:
-                return CONVERSATIONAL_MEETING_PHRASES[words[0]]
-            return "よろしくお願いします。"
+                return {
+                    "is_uncertain": False,
+                    "translated_text": CONVERSATIONAL_MEETING_PHRASES[norm_clean],
+                }
 
-        # Website boilerplate: "申し訳ありません、このコンテンツはただ今 アメリカ英語 のみです。"
-        if "このコンテンツはただ今" in ja_text or "アメリカ英語 のみ" in ja_text:
-            if (
-                "repeat" in orig_lower
-                or "again" in orig_lower
-                or "say that" in orig_lower
-            ):
-                return "すみません、もう一度お願いできますか？"
-            return "申し訳ありません。"
-
-        # Literal transliteration "グッドビー" for goodbye
-        if "グッドビー" in ja_text:
-            return "失礼いたします。"
-
-        # 'よく聞こえる。' for 'That sounds good'
-        if "よく聞こえる" in ja_text and "sound" in orig_lower and "good" in orig_lower:
-            return "いいですね、賛成です。"
+            # Do NOT match first words. Do NOT invent 'よろしくお願いします。' or '申し訳ありません。'.
+            # Return an explicit uncertain result to reject injection.
+            return {
+                "is_uncertain": True,
+                "translated_text": "",
+                "raw_translation": ja_text,
+                "error": "Web crawl footer artifact detected in MT output.",
+            }
 
         # Ensure sentence has appropriate Japanese punctuation
         ja_clean = ja_text.strip()
@@ -186,7 +196,11 @@ class MachineTranslationEngine:
                 ja_clean += "？"
             else:
                 ja_clean += "。"
-        return ja_clean
+
+        return {
+            "is_uncertain": False,
+            "translated_text": ja_clean,
+        }
 
     def translate(self, text: str) -> Dict[str, Any]:
         """Translate text from from_code to to_code."""
@@ -203,6 +217,7 @@ class MachineTranslationEngine:
                 "translated_text": conv_ja,
                 "latency_ms": elapsed_ms,
                 "is_mock": False,
+                "is_uncertain": False,
             }
 
         if not self._is_loaded:
@@ -213,17 +228,32 @@ class MachineTranslationEngine:
                     "translated_text": f"[JA: {text}]",
                     "latency_ms": elapsed_ms,
                     "is_mock": True,
+                    "is_uncertain": False,
                 }
 
         try:
             translated = self.translation.translate(text)
-            # Filter known hallucinations and ensure polite punctuation
-            filtered = self._filter_argos_hallucinations(text, translated)
             elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+
+            # Filter known hallucinations and ensure safety
+            filter_res = self._filter_argos_hallucinations(text, translated)
+            if filter_res.get("is_uncertain"):
+                return {
+                    "translated_text": "",
+                    "raw_translation": translated,
+                    "latency_ms": elapsed_ms,
+                    "is_mock": False,
+                    "is_uncertain": True,
+                    "error": filter_res.get(
+                        "error", "Translation rejected due to uncertainty."
+                    ),
+                }
+
             return {
-                "translated_text": filtered,
+                "translated_text": filter_res.get("translated_text", translated),
                 "latency_ms": elapsed_ms,
                 "is_mock": False,
+                "is_uncertain": False,
             }
         except Exception as e:
             print(f"[MT] Translation error: {e}")

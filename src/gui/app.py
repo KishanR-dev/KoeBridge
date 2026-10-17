@@ -101,6 +101,9 @@ class CaptionOverlay(tk.Toplevel):
             else:
                 new_style = base & ~WS_EX_TRANSPARENT
             ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, new_style)
+
+            # SWP_NOSIZE (0x1) | SWP_NOMOVE (0x2) | SWP_NOZORDER (0x4) | SWP_FRAMECHANGED (0x20) = 0x27
+            ctypes.windll.user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0027)
         except Exception:
             pass
 
